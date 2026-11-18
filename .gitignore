@@ -1,0 +1,9 @@
+dist/
+.bin/
+*.tar.gz
+*.sha256
+__pycache__/
+*.pyc
+.idea/
+.vscode/
+cache.db
