@@ -1,0 +1,4 @@
+# shellcheck 配置
+# 多文件模块化结构：各模块共享全局变量，跨文件使用无法被静态分析识别
+source-path=SCRIPTDIR/src/lib
+disable=SC2034
