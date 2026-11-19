@@ -1,0 +1,83 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  SINGBOX_VERSION: "1.14.4"
+  MIHOMO_VERSION: "1.19.34"
+
+jobs:
+  lint:
+    name: lint
+    runs-on: ubuntu-26.04
+    steps:
+      - uses: actions/checkout@v7
+      - name: 语法与静态检查
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq shellcheck python3
+          shellcheck --version | sed -n '2p'
+          make lint
+
+  test:
+    name: test
+    runs-on: ubuntu-26.04
+    needs: lint
+    steps:
+      - uses: actions/checkout@v7
+      - name: 下载 sing-box 与 mihomo
+        run: bash tests/fetch-binaries.sh
+      - name: 单元 / 配置 / 订阅测试
+        env:
+          SINGBOX_BIN: ./.bin/sing-box
+          MIHOMO_BIN: ./.bin/mihomo
+        run: bash tests/test.sh
+
+  package:
+    name: package
+    runs-on: ubuntu-26.04
+    needs: test
+    steps:
+      - uses: actions/checkout@v7
+      - name: 构建发布包
+        run: |
+          make package
+          ls -l dist/
+          (cd dist && sha256sum -c ./*.sha256)
+      - uses: actions/upload-artifact@v7
+        with:
+          name: sbox-dist
+          path: dist/*
+          if-no-files-found: error
+
+  release:
+    name: release
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-26.04
+    needs: package
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+      - name: 构建并发布
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -eu
+          make package
+          VER=$(head -1 VERSION | tr -d '[:space:]')
+          gh release create "$GITHUB_REF_NAME" \
+            "dist/sbox-$VER.tar.gz" \
+            "dist/sbox-$VER.tar.gz.sha256" \
+            --title "sbox $GITHUB_REF_NAME" \
+            --notes-file CHANGELOG.md \
+            --verify-tag
+          echo "已发布：${GITHUB_REF_NAME}"
